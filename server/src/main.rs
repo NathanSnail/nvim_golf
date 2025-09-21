@@ -27,9 +27,15 @@ async fn main() -> std::io::Result<()> {
         .max_connections(5)
         .min_connections(1)
         .idle_timeout(std::time::Duration::from_secs(300))
+        .acquire_timeout(std::time::Duration::from_secs(300))
         .connect_with(connection_options)
         .await
         .expect("Database must connect");
+
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("Database migrations must succeed");
 
     let state = AppState { pool };
     let data = web::Data::new(state);
