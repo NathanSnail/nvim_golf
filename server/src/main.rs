@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use actix_web::{App, HttpServer, Responder, get, web};
+use actix_web::{App, HttpServer, Responder, get, post, web};
+use serde::Deserialize;
 use sqlx::{
     Pool, Sqlite,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -13,7 +14,7 @@ struct AppState {
 type Data = web::Data<AppState>;
 
 #[get("/puzzles/{from}")]
-async fn greet(data: Data, path: web::Path<u32>) -> impl Responder {
+async fn get_puzzles(data: Data, path: web::Path<u32>) -> impl Responder {
     let from = path.into_inner();
     let rows = sqlx::query!("SELECT * FROM puzzles LIMIT 10 OFFSET ?", from)
         .fetch_all(&data.pool)
@@ -23,10 +24,32 @@ async fn greet(data: Data, path: web::Path<u32>) -> impl Responder {
     format!("from {from}")
 }
 
+#[derive(Deserialize, Debug)]
+struct UploadRequest {
+    name: String,
+    before: String,
+    after: String,
+}
+
+#[post("/upload")]
+async fn upload_puzzle(data: Data, info: web::Json<UploadRequest>) -> impl Responder {
+    dbg!(&info);
+    sqlx::query!(
+        "INSERT INTO puzzles (name, before, after) VALUES (?, ?, ?)",
+        info.name,
+        info.before,
+        info.after
+    )
+    .execute(&data.pool)
+    .await
+    .expect("TODO");
+    ""
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let db_path = std::env::var("DATABASE_URL").unwrap();
-    let connection_options = SqliteConnectOptions::from_str(&db_path)
+    let db_url = std::env::var("DATABASE_URL").unwrap();
+    let connection_options = SqliteConnectOptions::from_str(&db_url)
         .expect("Database URL should be a valid URL")
         .create_if_missing(true);
 
@@ -47,8 +70,13 @@ async fn main() -> std::io::Result<()> {
     let state = AppState { pool };
     let data = web::Data::new(state);
 
-    HttpServer::new(move || App::new().app_data(data.clone()).service(greet))
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    HttpServer::new(move || {
+        App::new()
+            .app_data(data.clone())
+            .service(get_puzzles)
+            .service(upload_puzzle)
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
