@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use actix_web::{App, HttpServer, Responder, get, web};
 use sqlx::{
     Pool, Sqlite,
@@ -11,16 +13,21 @@ struct AppState {
 type Data = web::Data<AppState>;
 
 #[get("/puzzles/{from}")]
-async fn greet(data: Data, path: web::Path<usize>) -> impl Responder {
+async fn greet(data: Data, path: web::Path<u32>) -> impl Responder {
     let from = path.into_inner();
+    let rows = sqlx::query!("SELECT * FROM puzzles LIMIT 10 OFFSET ?", from)
+        .fetch_all(&data.pool)
+        .await
+        .expect("TODO");
+    dbg!(rows);
     format!("from {from}")
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let db_path = "data/test.db";
-    let connection_options = SqliteConnectOptions::new()
-        .filename(db_path)
+    let db_path = std::env::var("DATABASE_URL").unwrap();
+    let connection_options = SqliteConnectOptions::from_str(&db_path)
+        .expect("Database URL should be a valid URL")
         .create_if_missing(true);
 
     let pool = SqlitePoolOptions::new()
@@ -30,12 +37,12 @@ async fn main() -> std::io::Result<()> {
         .acquire_timeout(std::time::Duration::from_secs(300))
         .connect_with(connection_options)
         .await
-        .expect("Database must connect");
+        .expect("Database should be able to connect");
 
     sqlx::migrate!()
         .run(&pool)
         .await
-        .expect("Database migrations must succeed");
+        .expect("Database migrations should succeed");
 
     let state = AppState { pool };
     let data = web::Data::new(state);
