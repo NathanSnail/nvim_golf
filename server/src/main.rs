@@ -46,6 +46,30 @@ async fn upload_puzzle(data: Data, info: web::Json<UploadRequest>) -> impl Respo
     ""
 }
 
+#[derive(Deserialize, Debug)]
+struct SolutionRequest {
+    keystrokes: String,
+}
+
+#[post("/submit/{puzzle}")]
+async fn submit_solution(
+    data: Data,
+    path: web::Path<u32>,
+    info: web::Json<SolutionRequest>,
+) -> impl Responder {
+    let puzzle = path.into_inner();
+    dbg!(puzzle, &info);
+    sqlx::query!(
+        "INSERT INTO solutions (puzzle, keystrokes) VALUES (?, ?)",
+        puzzle,
+        info.keystrokes
+    )
+    .execute(&data.pool)
+    .await
+    .expect("TODO");
+    ""
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let db_url = std::env::var("DATABASE_URL").unwrap();
@@ -75,6 +99,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(data.clone())
             .service(get_puzzles)
             .service(upload_puzzle)
+            .service(submit_solution)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
